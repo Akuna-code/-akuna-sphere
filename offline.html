@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hors ligne - AKUNA</title>
+<style>
+  body {
+    background: #03050a;
+    color: white;
+    font-family: system-ui, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+    text-align: center;
+  }
+  .container {
+    padding: 20px;
+  }
+  .icon {
+    font-size: 4rem;
+    margin-bottom: 20px;
+  }
+  h1 {
+    color: #c084fc;
+    margin-bottom: 10px;
+  }
+  p {
+    color: #7e8aa8;
+    margin-bottom: 20px;
+  }
+  button {
+    background: #c084fc;
+    color: black;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 40px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="icon">📡</div>
+  <h1>Mode hors ligne</h1>
+  <p>Tu n'as pas de connexion internet.<br>Reconnecte-toi pour synchroniser tes données.</p>
+  <button onclick="location.reload()">🔄 Réessayer</button>
+</div>
+</body>
+</html>
