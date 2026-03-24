@@ -1444,5 +1444,268 @@ if ('serviceWorker' in navigator) {
     .catch(err => console.log('SW error:', err));
 }
 </script>
+  <script>
+// ==================== ALARMES & NOTIFICATIONS ====================
+
+// Demande la permission pour les notifications
+async function requestNotificationPermission() {
+  if ('Notification' in window) {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      showToast('🔔 Notifications activées');
+    }
+  }
+}
+
+// Envoie une notification
+function sendNotification(title, body, delaySeconds = 0) {
+  if (!('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  
+  if (delaySeconds === 0) {
+    new Notification(title, { body, icon: '/akuna-ascent/icon.svg' });
+  } else {
+    setTimeout(() => {
+      new Notification(title, { body, icon: '/akuna-ascent/icon.svg' });
+    }, delaySeconds * 1000);
+  }
+}
+
+// Programme une alarme pour une heure donnée
+function scheduleAlarm(timeStr, title, message) {
+  const now = new Date();
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  const alarmTime = new Date();
+  alarmTime.setHours(hours, minutes, 0, 0);
+  
+  if (alarmTime < now) {
+    alarmTime.setDate(alarmTime.getDate() + 1);
+  }
+  
+  const delayMs = alarmTime - now;
+  const delayMinutes = Math.floor(delayMs / 60000);
+  
+  setTimeout(() => {
+    sendNotification(title, message);
+    showToast(`⏰ ${title} commence dans 5 min !`);
+  }, delayMs - 5 * 60 * 1000); // 5 min avant
+  
+  setTimeout(() => {
+    sendNotification(title, `🔥 C'est l'heure ! ${message}`);
+    showToast(`🔥 ${title} commence MAINTENANT !`);
+  }, delayMs);
+  
+  console.log(`⏰ Alarme programmée pour ${timeStr} (dans ${delayMinutes} min)`);
+}
+
+// Programme le réveil 4h30
+function scheduleWakeUp() {
+  scheduleAlarm('04:30', '🌅 RÉVEIL 4h30', 'Le monde dort, toi tu grind !');
+}
+
+// Programme tous les rappels de la journée
+function scheduleAllReminders() {
+  const blocks = sched[currentDay]?.blocks || [];
+  blocks.forEach(block => {
+    const startTime = block.t.split(/[–—\-]/)[0].trim();
+    scheduleAlarm(startTime, block.l, block.n || 'Prépare-toi !');
+  });
+}
+
+// ==================== SUIVI TEMPS RÉEL ====================
+
+let currentActivityStart = null;
+let currentActivityTimer = null;
+
+// Démarre le suivi d'une activité
+function startTrackingActivity(activityName, durationMinutes) {
+  if (currentActivityTimer) clearInterval(currentActivityTimer);
+  
+  currentActivityStart = Date.now();
+  const endTime = currentActivityStart + durationMinutes * 60 * 1000;
+  
+  // Met à jour l'affichage toutes les secondes
+  currentActivityTimer = setInterval(() => {
+    const now = Date.now();
+    const remaining = endTime - now;
+    const elapsed = now - currentActivityStart;
+    
+    if (remaining <= 0) {
+      clearInterval(currentActivityTimer);
+      showToast(`✅ ${activityName} terminé !`);
+      sendNotification('Activité terminée', `✅ ${activityName} - Bien joué !`);
+      updateLiveDashboard('Aucune activité en cours', 'Prochaine : à définir');
+      return;
+    }
+    
+    const remainingMin = Math.floor(remaining / 60000);
+    const remainingSec = Math.floor((remaining % 60000) / 1000);
+    const elapsedMin = Math.floor(elapsed / 60000);
+    
+    updateLiveDashboard(
+      `${activityName} - ${remainingMin}min ${remainingSec}s restant`,
+      `${elapsedMin}min écoulé`,
+      Math.floor((elapsed / (durationMinutes * 60 * 1000)) * 100)
+    );
+  }, 1000);
+}
+
+// Met à jour le tableau de bord live
+function updateLiveDashboard(current, progress, percent = null) {
+  let livePanel = document.getElementById('liveDashboard');
+  if (!livePanel) {
+    // Crée le panel s'il n'existe pas
+    const statsRow = document.querySelector('.stats-row');
+    livePanel = document.createElement('div');
+    livePanel.id = 'liveDashboard';
+    livePanel.style.cssText = `
+      background: linear-gradient(135deg, rgba(192,132,252,0.15), rgba(255,107,43,0.1));
+      border-radius: 16px;
+      padding: 12px 16px;
+      margin: 10px 20px;
+      border: 1px solid rgba(192,132,252,0.3);
+      animation: pulseBorder 2s infinite;
+    `;
+    statsRow.parentNode.insertBefore(livePanel, statsRow.nextSibling);
+  }
+  
+  const nextActivity = getNextActivity();
+  
+  livePanel.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+      <div style="flex: 1;">
+        <div style="font-size: 0.65rem; color: var(--dim); text-transform: uppercase;">🎯 EN COURS</div>
+        <div style="font-weight: 800; font-size: 0.9rem; color: var(--purple);">${current}</div>
+        <div style="font-size: 0.6rem; color: var(--dim);">${progress}</div>
+      </div>
+      <div style="flex: 1;">
+        <div style="font-size: 0.65rem; color: var(--dim); text-transform: uppercase;">⏭ PROCHAINE</div>
+        <div style="font-weight: 700; font-size: 0.85rem;">${nextActivity.title}</div>
+        <div style="font-size: 0.6rem; color: var(--orange);">dans ${nextActivity.timeRemaining}</div>
+      </div>
+      ${percent !== null ? `
+      <div style="width: 60px; text-align: center;">
+        <div style="font-size: 1.2rem; font-weight: 900; color: var(--green);">${percent}%</div>
+        <div style="font-size: 0.5rem; color: var(--dim);">COMPLET</div>
+      </div>
+      ` : ''}
+    </div>
+    <div style="margin-top: 8px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+      <div style="width: ${percent || 0}%; height: 100%; background: linear-gradient(90deg, var(--purple), var(--green)); transition: width 0.5s;"></div>
+    </div>
+  `;
+}
+
+// Récupère la prochaine activité
+function getNextActivity() {
+  const blocks = sched[currentDay]?.blocks || [];
+  const now = new Date().getHours() * 60 + new Date().getMinutes();
+  
+  for (let i = 0; i < blocks.length; i++) {
+    const start = timeToMinutes(blocks[i].t);
+    if (start > now) {
+      const remaining = start - now;
+      const hours = Math.floor(remaining / 60);
+      const minutes = remaining % 60;
+      return {
+        title: blocks[i].l,
+        timeRemaining: hours > 0 ? `${hours}h${minutes}min` : `${minutes}min`
+      };
+    }
+  }
+  return { title: 'Fin de journée', timeRemaining: '---' };
+}
+
+// Vérifie automatiquement l'activité en cours toutes les minutes
+function autoDetectCurrentActivity() {
+  const blocks = sched[currentDay]?.blocks || [];
+  const now = new Date().getHours() * 60 + new Date().getMinutes();
+  
+  for (let i = 0; i < blocks.length; i++) {
+    const start = timeToMinutes(blocks[i].t);
+    let end = start + 60; // par défaut 1h
+    if (blocks[i].t.includes('–') || blocks[i].t.includes('-')) {
+      const parts = blocks[i].t.split(/[–—\-]/);
+      if (parts.length > 1) end = timeToMinutes(parts[1]);
+    }
+    
+    if (now >= start && now < end) {
+      const duration = end - start;
+      startTrackingActivity(blocks[i].l, duration);
+      return;
+    }
+  }
+  updateLiveDashboard('Aucune activité en cours', 'Relax ou préparation');
+}
+
+// ==================== RAPPELS QUOTIDIENS ====================
+
+// Programme les rappels pour la journée
+function scheduleDailyReminders() {
+  const now = new Date();
+  const nextWakeUp = new Date();
+  nextWakeUp.setHours(4, 30, 0, 0);
+  if (nextWakeUp < now) nextWakeUp.setDate(nextWakeUp.getDate() + 1);
+  
+  // Rappel coucher 21h30
+  scheduleAlarm('21:30', '😴 COUCHER 21h30', 'Prépare-toi pour demain, 4h30 arrive !');
+  
+  // Rappel réveil 4h30
+  setTimeout(() => {
+    scheduleWakeUp();
+  }, nextWakeUp - now);
+}
+
+// ==================== INITIALISATION ====================
+
+// Démarre tout au chargement
+function initLiveFeatures() {
+  requestNotificationPermission();
+  
+  // Vérifie l'activité toutes les 30 secondes
+  setInterval(autoDetectCurrentActivity, 30000);
+  autoDetectCurrentActivity();
+  
+  // Programme les rappels
+  scheduleDailyReminders();
+  scheduleAllReminders();
+  
+  // Met à jour le compte à rebours live toutes les secondes
+  setInterval(() => {
+    if (currentActivityStart === null) autoDetectCurrentActivity();
+    updateLiveDashboard(
+      document.querySelector('#liveDashboard div div:first-child div:last-child')?.innerText || 'Aucune',
+      'En attente',
+      null
+    );
+  }, 1000);
+}
+
+// Lance au chargement de la page
+setTimeout(initLiveFeatures, 2000);
+
+// Ajoute un bouton pour forcer la demande de notification
+function addNotificationButton() {
+  const headerRight = document.querySelector('.header-right');
+  const notifBtn = document.createElement('button');
+  notifBtn.className = 'icon-btn';
+  notifBtn.innerHTML = '<span>🔔</span>';
+  notifBtn.title = 'Activer les notifications';
+  notifBtn.onclick = requestNotificationPermission;
+  headerRight.appendChild(notifBtn);
+}
+
+setTimeout(addNotificationButton, 1000);
+
+// ==================== STYLE ADDITIONNEL ====================
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes pulseBorder {
+    0%, 100% { border-color: rgba(192,132,252,0.3); box-shadow: 0 0 0 0 rgba(192,132,252,0.2); }
+    50% { border-color: rgba(192,132,252,0.8); box-shadow: 0 0 0 5px rgba(192,132,252,0.1); }
+  }
+`;
+document.head.appendChild(style);
+</script>
 </body>
 </html>
